@@ -44,12 +44,12 @@ To limit the requests per HTTP method, for example, you could subclass
 ```python
 import ghrequests
 
+
 class MyRequest(ghrequests.Request):
     @property
     def domain(self):
         return self.method
 
-urls = [("https://google.com", "https://canonical.com", ...]
 
 requests = [
     MyRequest("GET", "http://google.com"),
