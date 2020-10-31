@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from gevent import monkey; monkey.patch_all()
+from gevent import monkey; monkey.patch_all(thread=False)
 
 from collections import defaultdict
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Request:
-    def __init__(self, method, url, **kwargs):
+    def __init__(self, method=None, url=None, **kwargs):
         self.method = method
         self.url = url
         self.kwargs = kwargs
@@ -26,10 +26,13 @@ class Request:
 
     def send(self):
         try:
-            self._response = requests.request(
-                self.method, self.url, **self.kwargs)
+            self._response = self.run()
         except Exception as e:
             self.exception = e
+
+    def run(self):
+        return requests.request(
+            self.method, self.url, **self.kwargs)
 
     @property
     def response(self):
