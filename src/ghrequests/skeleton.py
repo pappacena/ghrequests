@@ -5,7 +5,7 @@ console script. To run this script uncomment the following lines in the
 [options.entry_points] section in setup.cfg:
 
     console_scripts =
-         fibonacci = pyhttpprober.skeleton:run
+         fibonacci = ghrequests.skeleton:run
 
 Then run `python setup.py install` which will install the command `fibonacci`
 inside your current environment.
@@ -19,7 +19,7 @@ import argparse
 import sys
 import logging
 
-from pyhttpprober import __version__
+from ghrequests import __version__
 
 __author__ = "pappacena"
 __copyright__ = "pappacena"
@@ -58,7 +58,7 @@ def parse_args(args):
     parser.add_argument(
         "--version",
         action="version",
-        version="pyhttpprober {ver}".format(ver=__version__))
+        version="ghrequests {ver}".format(ver=__version__))
     parser.add_argument(
         dest="n",
         help="n-th Fibonacci number",

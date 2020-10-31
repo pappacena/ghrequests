@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from gevent import monkey; monkey.patch_all()
 
 from collections import defaultdict
@@ -9,6 +10,9 @@ from gevent.threading import Thread
 import requests
 from six.moves.urllib.parse import urlparse
 
+__author__ = "pappacena"
+__copyright__ = "pappacena"
+__license__ = "mit"
 logger = logging.getLogger(__name__)
 
 
@@ -40,9 +44,18 @@ class Request:
 
 
 class Worker(Thread):
-    def __init__(self, request_queue):
+    def __init__(self, request_queue, domain, dispatcher):
+        """
+
+        :param request_queue: The queue of requests to execute.
+        :param domain: Which domain key will this worker deal with.
+        :param dispatcher: The dispatcher object that will be notified once
+            this worker stops.
+        """
         super(Worker, self).__init__()
         self.request_queue = request_queue
+        self.domain = domain
+        self.dispatcher = dispatcher
 
     def run(self):
         while True:
@@ -50,16 +63,20 @@ class Worker(Thread):
             if request is None:
                 logger.debug("Finishing worker %s: termination marker "
                              "received", request)
+                # Once we finish running, notify the dispatcher, so it can
+                # free up one worker spot.
+                self.dispatcher.remove_worker(self)
                 break
             request.send()
 
 
-class Prober:
+class Dispatcher:
     def __init__(self, max_connections=None, max_per_host=None):
         self.max_connections = max_connections
         self.max_per_host = max_per_host
         self.host_queues = defaultdict(lambda: Queue(self.max_per_host))
         self.host_workers = defaultdict(list)
+        self.global_workers_count = 0
 
     def get_domain_key(self, request):
         """
@@ -86,23 +103,36 @@ class Prober:
         :return: True if we started a new worker. False otherwise.
         """
         domain = self.get_domain_key(request)
-        workers = self.host_workers[domain]
-        limit = (self.max_per_host if self.max_per_host
-                 else self.max_connections)
-        if limit is not None and len(workers) > limit:
+        domain_workers = self.host_workers[domain]
+
+        # Reached max workers per host?
+        limit = self.max_per_host
+        if limit is not None and len(domain_workers) > limit:
             return False
+
+        # Reached global limit?
+        limit = self.max_connections
+        if limit is not None and self.global_workers_count > limit:
+            return False
+
         logger.debug("Starting new worker for domain '%s'", domain)
-        worker = Worker(self.get_host_queue(request))
-        workers.append(worker)
+        worker = Worker(self.get_host_queue(request), domain, self)
+        domain_workers.append(worker)
+        self.global_workers_count += 1
         worker.start()
         return True
+
+    def remove_worker(self, worker):
+        """Removes the worker from our workers pool."""
+        self.host_workers[worker.domain].remove(worker)
+        self.global_workers_count -= 1
 
     def close_host_queues(self):
         for domain, queue in list(self.host_queues.items()):
             for _ in self.host_workers.get(domain):
                 queue.put(None)
 
-    def probe(self, async_requests):
+    def run(self, async_requests):
         for request in async_requests:
             host_queue = self.get_host_queue(request)
             host_queue.put(request)

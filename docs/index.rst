@@ -1,8 +1,8 @@
 ============
-pyhttpprober
+ghrequests
 ============
 
-This is the documentation of **pyhttpprober**.
+This is the documentation of **ghrequests**.
 
 .. note::
 

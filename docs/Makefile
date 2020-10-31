@@ -8,8 +8,8 @@ PAPER         =
 BUILDDIR      = ../build/sphinx/
 AUTODOCDIR    = api
 AUTODOCBUILD  = sphinx-apidoc
-PROJECT       = pyhttpprober
-MODULEDIR     = ../src/pyhttpprober
+PROJECT       = ghrequests
+MODULEDIR     = ../src/ghrequests
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $?), 1)
