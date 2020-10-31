@@ -1,7 +1,8 @@
 # ghrequests
 
 [![Build Status](https://travis-ci.org/pappacena/ghrequests.svg?branch=main)](https://travis-ci.org/pappacena/ghrequests)
-
+[![Version](https://img.shields.io/pypi/v/ghrequests.svg?colorB=blue)](https://pypi.org/project/ghrequests/)
+[![PyVersion](https://img.shields.io/pypi/pyversions/ghrequests.svg?)](https://pypi.org/project/ghrequests/)
 
 Python library for massive (but controlled) parallel HTTP calls using gevent and requests
 
