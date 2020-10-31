@@ -1,5 +1,7 @@
 # ghrequests
 
+[![Build Status](https://travis-ci.org/pappacena/ghrequests.svg?branch=main)](https://travis-ci.org/pappacena/ghrequests)
+
 
 Python library for massive (but controlled) parallel HTTP calls using gevent and requests
 
@@ -8,7 +10,7 @@ Python library for massive (but controlled) parallel HTTP calls using gevent and
 
 Inspired in [grequests](https://github.com/spyoungtech/grequests/), this
 library allows you to do massively parallel HTTP requests, but controlling
-both the limit of simultaneous connections both per target host and globally.
+both the limit of simultaneous connections per target host and globally.
 
 The usage is simple:
 
