@@ -41,7 +41,19 @@ class TestFunctionalRequester(TestCase):
         requests = [ghrequests.head(url) for url in urls]
 
         start = datetime.datetime.now()
-        ghrequests.request_all(requests, max_per_host=2)
+        ghrequests.request_all(requests, max_per_domain=2)
+        end = datetime.datetime.now()
+        self.assertGreaterEqual(end - start, datetime.timedelta(seconds=4))
+        for request in requests:
+            self.assertIsNotNone(
+                request.response, "%s didn't finish" % request.url)
+
+    def test_requester_setting_both_limits(self):
+        urls = test_urls + (["http://httpbin.org/delay/1"] * 8)
+        requests = [ghrequests.head(url) for url in urls]
+
+        start = datetime.datetime.now()
+        ghrequests.request_all(requests, max_connections=4, max_per_domain=2)
         end = datetime.datetime.now()
         self.assertGreaterEqual(end - start, datetime.timedelta(seconds=4))
         for request in requests:

@@ -20,6 +20,8 @@ __all__ = [
     'head',
     'patch',
     'delete',
+    'request',
+    'Request'
 ]
 
 get = partial(Request, 'GET')
@@ -32,12 +34,12 @@ delete = partial(Request, 'DELETE')
 request = Request
 
 
-def request_all(requests, max_connections=None, max_per_host=None):
+def request_all(requests, max_connections=None, max_per_domain=None):
     """
     Run all requests in parallel, respecting the given limits.
 
 
     :param max_connections: Global max simultaneous connections.
-    :param max_per_host: Max requests per host.
+    :param max_per_domain: Max requests per host.
     """
-    return Dispatcher(max_connections, max_per_host).run(requests)
+    return Dispatcher(max_connections, max_per_domain).run(requests)

@@ -4,6 +4,7 @@ from gevent import monkey; monkey.patch_all()
 from collections import defaultdict
 import logging
 
+import gevent
 from gevent.queue import Queue
 from gevent.threading import Thread
 import requests
@@ -41,8 +42,8 @@ class Request:
         return urlparse(self.url).netloc
 
     def __str__(self):
-        return "<Request %s %s%s>" % (
-            self.method.upper(), self.url,
+        return "<Request [%s] %s %s%s>" % (
+            self.domain, self.method.upper(), self.url,
             "" if not self.kwargs else " %s" % self.kwargs)
 
 
@@ -74,79 +75,118 @@ class Worker(Thread):
 
 
 class Dispatcher:
-    def __init__(self, max_connections=None, max_per_host=None):
+    def __init__(self, max_connections=None, max_per_domain=None):
         self.max_connections = max_connections
-        self.max_per_host = max_per_host
-        self.host_queues = defaultdict(lambda: Queue(self.max_per_host))
-        self.host_workers = defaultdict(list)
-        self.global_workers_count = 0
+        self.max_per_domain = max_per_domain
+        self.domain_queues = defaultdict(Queue)
+        self.domain_workers = defaultdict(list)
+        self.all_workers = set()
+        self.workers_to_join = Queue()
+        self.pending_worker_domains = set()
 
     def get_domain_key(self, request):
         """
-        Returns the domain queue used on both self.host_queues and
-        self.host_workers.
+        Returns the domain queue used on both self.domain_queues and
+        self.domain_workers.
 
         If we are not limiting connections per host, this method returns
         "None", indicating that both workers and queues should not be
         splitted between domains.
         """
-        return request.domain if self.max_per_host else None
+        return request.domain if self.max_per_domain else None
 
     def get_host_queue(self, request):
         domain = self.get_domain_key(request)
-        return self.host_queues[domain]
+        return self.domain_queues[domain]
 
-    def dispatch_host_worker(self, request):
+    def dispatch_host_worker(self, domain, close_queue=False):
         """Create and start a new worker for the request if we didn't reach
         our limites yet. Does nothing if we reached our simultaneous
         request limits.
 
-        :param request: The Request object that triggered the need for a
-            worker.
-        :return: Created worker if we started a new worker. None otherwise.
+        :param domain: Create a worker for this specific domain.
+        :param close_queue: If close_queue is True, a None terminator will
+            be added to the worker's queue if it will be created.
+        :return: A tuple with the created worker and a flag indicating
+            if we reached the global limit.
         """
-        domain = self.get_domain_key(request)
-        domain_workers = self.host_workers[domain]
+        domain_workers = self.domain_workers[domain]
 
         # Reached max workers per host?
-        limit = self.max_per_host
+        limit = self.max_per_domain
         if limit is not None and len(domain_workers) >= limit:
-            return None
+            return None, False
 
         # Reached global limit?
         limit = self.max_connections
-        if limit is not None and self.global_workers_count >= limit:
-            return None
+        if limit is not None and len(self.all_workers) >= limit:
+            return None, True
 
         logger.debug("Starting new worker for domain '%s'", domain)
-        worker = Worker(self.get_host_queue(request), domain, self)
+        queue = self.domain_queues[domain]
+        worker = Worker(queue, domain, self)
         domain_workers.append(worker)
-        self.global_workers_count += 1
+        self.all_workers.add(worker)
         worker.start()
-        return worker
+        if close_queue:
+            queue.put(None)
+        return worker, False
 
     def remove_worker(self, worker):
         """Removes the worker from our workers pool."""
-        self.host_workers[worker.domain].remove(worker)
-        self.global_workers_count -= 1
+        self.domain_workers[worker.domain].remove(worker)
+        self.all_workers.remove(worker)
+        self.workers_to_join.put(worker)
+        # If we still have requests to do for other domains, let's start
+        # a new worker.
+        if len(self.pending_worker_domains):
+            domain = next(iter(self.pending_worker_domains))
+            # Start a new worker if possible, and since all requests are
+            # already in the queue, we will need a "close_queue" terminator
+            # there.
+            self.dispatch_host_worker(domain, close_queue=True)
+            limit_reached = (
+                    self.max_per_domain is not None and
+                    len(self.domain_workers[domain]) >= self.max_per_domain)
+            if limit_reached or self.domain_queues[domain].empty():
+                # If we already have reached max workers or there is no
+                # request left for this domain, it's not pending anymore.
+                try:
+                    self.pending_worker_domains.remove(domain)
+                except KeyError:
+                    pass
+        # We are done with the workers. Let's close the "worker joiner" queue.
+        if not len(self.all_workers):
+            self.workers_to_join.put(None)
 
-    def close_host_queues(self, workers_created_per_queue):
+    def close_domain_queues(self, workers_created_per_queue):
         for queue, workers_count in workers_created_per_queue.items():
             for _ in range(workers_count):
                 queue.put(None)
 
     def run(self, async_requests):
         workers_created_per_queue = defaultdict(int)
-        all_workers = []
         for request in async_requests:
+            domain = self.get_domain_key(request)
             host_queue = self.get_host_queue(request)
             host_queue.put(request)
-            worker = self.dispatch_host_worker(request)
+            worker, global_limit_reached = self.dispatch_host_worker(domain)
             if worker is not None:
-                all_workers.append(worker)
+                # We have created a worker.
                 workers_created_per_queue[host_queue] += 1
+            elif (global_limit_reached and
+                  self.max_per_domain is not None and
+                  len(self.domain_workers[domain]) < self.max_per_domain):
+                # No worker created, global limit reached and we still do not
+                # have all workers we want for that domain. We will need a new
+                # worker for this domain as soon as possible.
+                self.pending_worker_domains.add(domain)
 
-        self.close_host_queues(workers_created_per_queue)
+        self.close_domain_queues(workers_created_per_queue)
 
-        for worker in all_workers:
+        while True:
+            gevent.sleep(0)
+            worker = self.workers_to_join.get()
+            if worker is None:
+                break
             worker.join()
