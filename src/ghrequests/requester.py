@@ -103,46 +103,50 @@ class Dispatcher:
 
         :param request: The Request object that triggered the need for a
             worker.
-        :return: True if we started a new worker. False otherwise.
+        :return: Created worker if we started a new worker. None otherwise.
         """
         domain = self.get_domain_key(request)
         domain_workers = self.host_workers[domain]
 
         # Reached max workers per host?
         limit = self.max_per_host
-        if limit is not None and len(domain_workers) > limit:
-            return False
+        if limit is not None and len(domain_workers) >= limit:
+            return None
 
         # Reached global limit?
         limit = self.max_connections
-        if limit is not None and self.global_workers_count > limit:
-            return False
+        if limit is not None and self.global_workers_count >= limit:
+            return None
 
         logger.debug("Starting new worker for domain '%s'", domain)
         worker = Worker(self.get_host_queue(request), domain, self)
         domain_workers.append(worker)
         self.global_workers_count += 1
         worker.start()
-        return True
+        return worker
 
     def remove_worker(self, worker):
         """Removes the worker from our workers pool."""
         self.host_workers[worker.domain].remove(worker)
         self.global_workers_count -= 1
 
-    def close_host_queues(self):
-        for domain, queue in list(self.host_queues.items()):
-            for _ in self.host_workers.get(domain):
+    def close_host_queues(self, workers_created_per_queue):
+        for queue, workers_count in workers_created_per_queue.items():
+            for _ in range(workers_count):
                 queue.put(None)
 
     def run(self, async_requests):
+        workers_created_per_queue = defaultdict(int)
+        all_workers = []
         for request in async_requests:
             host_queue = self.get_host_queue(request)
             host_queue.put(request)
-            self.dispatch_host_worker(request)
+            worker = self.dispatch_host_worker(request)
+            if worker is not None:
+                all_workers.append(worker)
+                workers_created_per_queue[host_queue] += 1
 
-        self.close_host_queues()
+        self.close_host_queues(workers_created_per_queue)
 
-        for key, workers in self.host_workers.items():
-            for worker in workers:
-                worker.join()
+        for worker in all_workers:
+            worker.join()
