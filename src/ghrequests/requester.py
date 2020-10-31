@@ -3,7 +3,6 @@ from gevent import monkey; monkey.patch_all()
 
 from collections import defaultdict
 import logging
-import traceback
 
 from gevent.queue import Queue
 from gevent.threading import Thread
@@ -21,17 +20,21 @@ class Request:
         self.method = method
         self.url = url
         self.kwargs = kwargs
-        self.response = None
-        self.traceback = None
+        self._response = None
         self.exception = None
 
     def send(self):
         try:
-            self.response = requests.request(
+            self._response = requests.request(
                 self.method, self.url, **self.kwargs)
         except Exception as e:
-            self.traceback = traceback.format_exc()
             self.exception = e
+
+    @property
+    def response(self):
+        if self.exception is not None:
+            raise self.exception
+        return self._response
 
     @property
     def domain(self):
