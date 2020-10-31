@@ -6,7 +6,7 @@ import logging
 
 import gevent
 from gevent.queue import Queue
-from gevent.threading import Thread
+from gevent import Greenlet
 import requests
 from six.moves.urllib.parse import urlparse
 
@@ -47,7 +47,7 @@ class Request:
             "" if not self.kwargs else " %s" % self.kwargs)
 
 
-class Worker(Thread):
+class Worker(Greenlet):
     def __init__(self, request_queue, domain, dispatcher):
         """
 
@@ -61,7 +61,7 @@ class Worker(Thread):
         self.domain = domain
         self.dispatcher = dispatcher
 
-    def run(self):
+    def _run(self):
         while True:
             request = self.request_queue.get()
             if request is None:
@@ -72,6 +72,9 @@ class Worker(Thread):
                 self.dispatcher.remove_worker(self)
                 break
             request.send()
+
+    def __str__(self):
+        return "Worker for %s" % self.domain
 
 
 class Dispatcher:
