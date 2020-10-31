@@ -1,13 +1,10 @@
-============
-ghrequests
-============
+# ghrequests
 
 
 Python library for massive (but controlled) parallel HTTP calls using gevent and requests
 
 
-Description
-===========
+## Description
 
 Inspired in [grequests](https://github.com/spyoungtech/grequests/), this
 library allows you to do massively parallel HTTP requests, but controlling
